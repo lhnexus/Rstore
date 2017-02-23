@@ -1,0 +1,1211 @@
+华为技术有限公司
+版本	密级
+	1.0	内部公开
+	文档编号
+ 	共 55 页
+
+
+
+基于终端海量测试数据的质量风险预测技术合作项目
+方案设计
+项目经理　：杨建伟
+
+
+
+
+
+ 
+
+华为技术有限公司
+版权所有  侵权必究 
+修订记录
+日期	修订版本	描述	作者
+2017/01/17	1.0	第一稿	杨建伟
+			
+ 
+目    录
+1.	目的和范围	3
+1.1.	目的	3
+1.2.	范围	3
+2.	概述	3
+2.1.	业务背景及现状	3
+2.2.	业务目标	4
+2.3.	约束条件	5
+2.4.	总体设计思想	6
+2.5.	系统架构图	7
+2.6.	业务架构图	8
+2.7.	系统功能图	11
+2.8.	部署架构图	12
+2.9.	数据架构图	13
+2.10.	数据模型图	13
+3.	模块总体设计	14
+3.1.	业务规则	14
+4.	技术实现方案	16
+4.1.	物料质量风险问题及异常测试装备识别预测模型	16
+4.1.1  预测模型驱动	16
+4.1.2  预测模型输入数据预处理	16
+4.1.3  预测模型运算	18
+4.2.	自学习动态预警阈值模型	20
+4.2.1 物料批次自学习动态预警阈值计算	20
+4.2.2 测试装备自学习动态预警阈值计算	21
+4.3.	质量风险预测原型应用	22
+4.3.1  产品系列信息	22
+4.3.2  预测模型运行统计	23
+4.3.3  物料批次预警汇总	24
+4.3.4  物料类型统计信息	25
+4.3.5  物料批次预测结果	27
+4.3.6  物料批次预测结果时序分布	29
+4.3.7  物料批次预测结果密度分布	31
+4.3.8  测试装备预警汇总	33
+4.3.9  测试装备预测结果	35
+4.3.10  测试装备预测结果时序分布	38
+4.3.11  测试装备预测结果密度分布	39
+4.4.	数据模型定义	42
+
+ 
+1.	目的和范围
+1.1.	目的
+本文的目的是根据已基线化的需求定义对系统实现方法进行分析，得出系统实现的总体结构及与系统实现相关的各个主要方面的框架，为系统详细设计奠定基础。
+1.2.	范围
+本文明确了基于终端海量测试数据的质量风险预测技术合作项目方法与思路，清晰定义了优化方案设计中的关键技术，并明确了相关的问题及解决方法。
+2.	概述
+2.1.	业务背景及现状
+出于提升终端生产制造的质量风险预测能力的目的，基于目前终端装备生产测试数据（例如：生产装配中的单一或批次物料的所有测试点数据，以及测试装备自身的运行数据）构建一个新的质量风险技术分析与预测平台。该平台的主要技术功能是对生产测试过程中的单一或者批次物料在所有生产环节的测试点数据和测试装备自身的数据进行综合性的快速关联性和预测分析，对潜在质量风险的批次物料问题和装备问题，提供预警信息给用户，避免生产完成后再次进行大批量的返工和资源浪费。建设该技术平台总体要求如下：
+•	高性能处理能力，能够保存和处理最近3个月的测试数据（按照每个月约8TB测算），并且支持将历史数据归档到其他的外部系统中，供查询和回溯分析使用；
+•	数据集成能力，支持各种异构数据源的接入，并且支持流数据以及早期的风险甄别；
+•	实时预警与预测能力，根据设计好的预测算法模型，使用SAP HANA对测试数据进行密集地周期性地预测分析（例如：5分钟试算一次），然后自动生成告警信息和报告数据（电子邮件），并且按照优先级发送给相应的用户进行后续处理；
+此外，将需要更快速响应的异常特征识别模型从SAP HANA中剥离出一个简化的版本，将其设置在数据流引擎之中，便于在在初期（数据未进入到HANA和未被计算之前）就可以侦测到这些异常指标，并且生成告警信息报告；
+•	横向扩展和多应用灵活部署能力，支持应用服务平台的横向集群扩展，以满足未来部署更多的质量风险预测相关的功能模块；
+•	基于真正的微服务的系统架构能力，设计来适应更多不同应用的部署，可以快速的进行原型应用的开发和应用部署；
+•	提供基于角色与用户体验优先的界面设计、开发与展现能力，并可灵活调用各种丰富的开源组件库，丰富用户体验。
+
+考虑到该平台建设所存在的技术和预测准确度等方面的不确定性，需要通过本次项目先行建设一个原型应用，探索相应的模型算法，并基于个别型号产品的历史测试数据和历史物料不良数据进行验证，以便确定出下阶段进行平台化以及推广的可行性。
+2.2.	业务目标  
+1）物料质量风险问题预测模型
+序号	子场景名称	实施内容描述
+1	模型数据预清洗处理	在数据进入HANA之后和被预测模型调用之前，针对测试装备提供的测试数据进行必要的数据清洗、错误和冗余检查等操作，为对应的模型运算提供数据基础
+2	预测模型训练及调优	在HANA数据平台中基于PAL、图形化建模、SQLScript等逻辑脚本及机器学习算法库，根据单一物料或者批次物料在所有测试点的测试数据，计算预测分析需要的维度指标，通过算法将单一或者某个批次不良物料列入预警
+3	用户界面	华为团队负责实现所有模型展示和验证所需的前端展现，SAP提供前端应用所需调用的Web服务或者是存储过程作为数据交互的接口。
+
+
+2）异常测试装备识别预测模型
+序号	子场景名称	实施内容描述
+1	模型数据预清洗处理	在数据进入HANA之后和被预测模型调用之前，针对测试装备提供的测试数据进行必要的数据清洗、错误和冗余检查等操作，为对应的模型运算提供数据基础
+2	预测模型训练及调优	在HANA数据平台中基于PAL、图形化建模、SQL Script等逻辑脚本及机器学习算法库，使用测试装备提供的测试数据，多生产线比对，针对不同或者相同的批次物料，在相同的测试基础和测试点上呈现的异常，通过算法将不良装备列入预警
+3	用户界面	华为团队负责实现所有模型展示和验证所需的前端展现，SAP提供前端应用所需调用的Web服务或者是存储过程作为数据交互的接口。
+3）质量风险预测原型应用
+序号	子场景名称	实施内容描述
+1	预测分析模型处理作业调度	在HANA平台中对预测分析作业进行定时运算调度,定时启动预测分析的运算作业。同时，在系统标准作业调度管理界面上，可对预测分析作业的执行状态进行监控管理和配置。
+2	应用架构设计	完成原型应用的部署和基础设计，对预测分析的应用开发、分包、CDS数据结构设计、业务逻辑（包括模型、视图、存储过程和Web服务）提供支撑，以及应用的部署和传输到最终环境。
+
+2.3.	约束条件
+1.运行环境
+ (1)硬件要求：
+物理机：华为FusionCube Server服务器（8 nodes:7个worker节点，1个standby节点；4个CPU：10核2.4GHz Interl(R) Xeon(R) CPU E7-4870；内存：512G）
+
+ (2) 软件要求：
+	操作系统：SuSE11 SP3
+	RServe
+	R-Stan
+(3)网络环境：系统在公司内网可以完全使用，网络通讯协议采用HTTP协议。
+服务器端网络环境：遵循公司网络环境相关标准。
+2.资源约束
+(1) 内部人员投入方面：
+项目的运作，需要业务部门、IT部门的共同参与。
+项目组织方面： 项目赞助人、项目执行主管、项目经理、IT成员、业务成员。各类角色分别承担不同的职责。
+这方面的资源约束主要是业务部门人员的投入程度。
+(2) 服务器端硬件方面和软件方面：使用公司Web平台运行环境。
+(3) 项目开发策略：
+项目开发方式采用阶段开发的模式。
+对开发人员的要求主要是需要熟练使用HANA平台、css、html技术。
+3.技术限制：技术限制主要表现在以下方面：
+(1) 数据库: 采用HANA .
+(2) 网络通讯协议： 采用HTTP协议.
+(3) 编程规范： 采用华为公司IT相关开发规范。
+(4) 系统采用成熟的HANA平台+ javascript开发语言。
+2.4.	总体设计思想
+系统采用成熟HANA平台作为主体开发平台，页面通过HTML/JS原型继承组件继承原型页面从而实现个性化定制，javasrcipt作为数据提供接口加以辅佐，使平台的反应更加迅速。
+预测模型方面采用R-Stan作为建模语言， 结合HANA平台提供的嵌入式R客户端，实现数据输入输出与预测模型的无缝对接。
+数据清洗和汇总方面， 充分利用HANA作为高性能数据存储和访问平台的优势， 建立HANA标准的计算视图， 封装数据存储层到数据展示层的复杂逻辑， 保持数据访问接口的可读性和易维护性。
+页面展示层通过轻量级的HTTP接口和HANA平台标准的oData服务访问后台数据， 在实现快速迭代开发的同时保持足够的开放性和灵活性。
+本系统设计遵循国际和国内的标准与规范。必须遵循的公司的信息安全要求和技术架构、标准与规范要求。
+2.5.	系统架构图
+ 
+2.6.	业务架构图
+ 
+
+
+2.6.1关键业务场景描述
+2.6.1.1  物料质量风险问题及异常测试装备识别预测模型
+	以贝叶斯概率模型为理论基础，采用马尔可夫蒙特卡洛（MCMC）方法进行采样，进行多次迭代计算得出物料不良率和测试装备重测率的分布，取最大似然概率作为预测结果
+	针对实际业务场景，建立层级贝叶斯模型，从物料的供应商，到物料的大批次，再到物料的小批次，最后到每一台测试装备，都做出相应的预测计算
+	预测模型同时计算物料的不良率和测试装备的重测率， 而不是在物料或测试装备正常的假定下针对另一维度做定量分析。
+	在数据层面，通过R2测试项关联物料与测试装备的汇总数据，然后通过模型计算物料不良率和测试装备重测率的联合分布。
+	对于连续三次或三次以上为通过同一测试项测试的手机， 判定为物料不良。
+	基于相同的测试项， 对于第一次测试未通过， 第二次测试通过的手机, 判定为物料正常， 第一次测试所用的测试装备产生了一次重测。
+	基于相同的测试项， 对于第一次和第二次测试未通过， 第三次测试通过的手机, 判定为物料正常， 第一次和第二次测试所用的测试装备分别产生了一次重测。
+	关连维修表数据, 鉴别第二次或第三次通过测试的手机， 是测试装备在第一次（和第二次）测试产生了重测， 还是物料经过更换从而通过了测试， 如果有物料更换记录， 则判定为物料不良， 测试装备正常。
+	针对需重点监控的R3测试项， 深入到R3层测试数据， 检验测试值的分布是否健康， 不健康指标达到一定程度同时置信度达到一定程度时， 即使物料不良率和测试装备重测率未超标， 仍然触发预警。
+
+
+
+层级贝叶斯预测模型所依据的概率分布公式说明(R2层)：
+Pm：物料不良的概率
+Pt ：测试装备重测的概率
+
+一次通过的概率（T）               
+= 物料正常的概率 * 测试装备正常的概率 
+= （ 1  – 物料不良的概率（Pm）） * （ 1 – 测试装备重测的概率（Pt） ）
+= （1 – Pm ） * （1 – Pt ）
+第一次失败第二次通过的概率（FT）
+=  测试装备重测的概率（第一次测试） * 测试通过的概率（第二次测试）
+=  Pt * （ 1  – 物料不良的概率（Pm）） * （ 1 – 测试装备重测的概率（Pt） ）
+= （1 – Pm ） * （1 – Pt ）*  Pt
+第一次失败第二次第三次通过的概率（FFT）
+= 测试装备重测的概率（第一次测试） * 测试装备重测的概率（第二次测试）* 测试通过的概率(第三次测试)
+=  Pt * Pt * （ 1  – 物料不良的概率（Pm）） * （ 1 – 测试装备重测的概率（Pt） ）
+=  （ 1 – Pt ）*  Pt * Pt
+三次测试都失败的概率（FFF）
+= 物料不良的概率 + 物料正常的概率 * 测试装备重测的概率（第一次测试）* 测试装备重测的概率（第二次测试）* 测试装备重测的概率（第三次测试）  
+=  Pm  + （ 1 – 物料不良的概率（Pm） ）* 测试装备重测的概率（Pt） * 测试装备重测的概率（Pt）* 测试装备重测的概率（Pt）
+=  Pm  + （ 1 – Pm） * Pt * Pt * Pt
+
+
+2.6.1.2  自学习动态预警阈值模型
+	针对预警阈值，在缺乏初始阈值设定及业务用户介入的情况下，建立无监督的机器学习模型，应用大津算法，进行动态阈值计算
+	为提高预警阈值算法的敏感度和准确度，结合平衡采样算法和方差测试算法对数据样本进行筛选和预处理
+
+2.6.1.3  质量风险预测原型应用
+2.6.1.3.1 质量风险预警控制中心
+在质量风险预警控制中心中基于产品类型和物料类型，以物料批次和测试装备为不同纬度，提供预警信息。针对超过预警阈值的物料批次及测试装备，以不同预警等级分别统计预警数量并在控制中心以醒目方式展现。物料批次预警面板同时提供对应预警等级下受影响的生产工厂数量以及已生产数量等信息。测试装备预警面板同时提供对应预警等级下受影响的工厂数量以及受影响的物料数量。
+2.6.1.3.2 物料批次预测信息发布应用
+物料批次预测信息发布应用提供特定产品品类下特定物料类型的各批次不良率的预测结果信息，同时根据动态阈值确定预警级别。通过列表和图表从不同角度展现预测结果，列表结果对预警级别进行排序，预警级别高的物料批次优先显示。图表结果运用专业统计图形，针对不同物料类型大批次中的小批次的预测结果及预警级别进行直观展现。不同物料批次的预测结果信息可以进行进一步下钻分析，确定问题物料预测结果的根因。
+2.6.1.3.3 物料批次预测信息下钻分析应用
+物料批次预测信息下钻分析应用提供单一物料批次基于时间序列的预测结果信息展现，通过预测模型在不同运算时间窗口下的预测结果和置信区间的比对，预测结果与统计结果的比对，以及测试过该批次物料的测试装备重测率的对比分析，进一步分析和确保预测结果的准确性。同时提供不同运算窗口下预测模型结果的密度分布，帮助洞悉预测模型的运算机理。
+2.6.1.3.4 测试装备预测信息发布应用
+测试装备预测信息发布应用提供测试过特定产品品类下特定物料类型的相关测试装备重测率的预测结果信息，同时根据动态阈值确定预警级别。通过列表和图表从不同角度展现预测结果，列表结果对预警级别进行排序，预警级别高的测试装备优先显示。图表结果运用专业统计图形，针对不同测试装备的预测结果及预警级别进行直观展现。不同测试装备的预测结果信息可以进行进一步下钻分析，确定异常测试装备预测结果的根因。
+2.6.1.3.5 测试装备预测信息下钻分析应用
+测试装备预测信息下钻分析应用提供单一测试装备基于时间序列的预测结果信息展现，通过预测模型在不同运算时间窗口下的预测结果和置信区间的比对，以及预测结果与统计结果的比对，进一步分析和确保预测结果的准确性。同时提供不同运算窗口下预测模型结果的密度分布，帮助洞悉预测模型的运算机理。
+
+2.7.	系统功能图
+
+2.8.	部署架构图
+质量风险预测原型应用采用单机部署
+ 
+2.9.	数据架构图
+
+2.10.	数据模型图
+
+ 
+
+3.	模块总体设计
+3.1.	 业务规则
+	质量风险预警控制中心
+	根据产品类型分类物料类型
+	根据物料类型分类展示预警信息
+	根据物料批次及测试装备展示预警信息
+	根据不同预警级别(红，黄)统计问题物料批次数量及异常测试装备数量
+	预警信息同时囊括受影响工厂数量统计和受影响物料数量统计
+	物料批次预测信息
+	提供所选物料类型下所有物料批次的最新不良率预测结果明细信息及预警信息明细列表
+	提供所选物料类型下的物料批次不良率的最新动态阈值信息
+	明细列表中物料批次按照预警级别排序，问题物料批次优先级高
+	以预测图表展示不同物料大批次下各个小批次的不良率预测结果比对
+	可对每个物料批次预测结果进一步下钻分析
+	物料批次预测信息下钻分析
+	提供基于时间序列的单一物料批次不良率预测结果时序图
+	预测结果时序图直观展示预测结果，置信区间及阈值曲线
+	提供单一物料批次各时间窗口预测结果密度分布辅助验证预测结果
+	测试装备预测信息
+	提供所选物料类型下所有测试装备最新重测率的预测结果明细信息及预警信息明细列表
+	提供所选物料类型下的测试装备重测率的最新动态阈值信息
+	明细列表中测试装备按照预警级别排序，异常测试装备优先级高
+	以预测图表展示所有相关测试装备重测率的预测结果比对
+	可对每个测试装备的预测结果进一步下钻分析
+	测试装备预测信息下钻分析
+	提供基于时间序列的单一测试装备重测率的预测结果时序图
+	预测结果时序图直观展示预测结果，置信区间及阈值曲线
+	提供单一测试装备各时间窗口预测结果密度分布辅助验证预测结果 
+4.	技术实现方案
+4.1.	物料质量风险问题及异常测试装备识别预测模型
+4.1.1  预测模型驱动
+[功能简述]：用于驱动预测模型运行
+[界面展示]：N/A
+[设计概要]
+1）存储过程定义：
+命名空间	存储过程名	描述
+PAPOC	RMODEL_R2_EXECUTE	用于驱动预测模型运行，触发数据预处理及R存储过程
+
+RMODEL_R2_EXECUTE
+输入	类型	描述
+N/A	N/A	N/A
+
+输出	类型	描述
+N/A	N/A	N/A
+
+2) 存储过程相关表定义(表结构定义参考 4.4)：
+
+命名空间	表名	描述
+PAPOC	RMODEL_INPUT_DATA_CNT	不同物料类型下所有物料总数统计
+
+4.1.2  预测模型输入数据预处理
+[功能简述]：对源数据进行预处理，为预测模型提供输入参数数据集
+[界面展示]：N/A
+[设计概要]
+1）存储过程定义：
+命名空间	存储过程名	描述
+PAPOC	RMODEL_PREPARE_INPUT	用于生成预测模型所需要的输入数据集
+
+RMODEL_R2_EXECUTE
+输入	类型	描述
+MAT_ID_INDEX	INTEGER	物料类型索引
+RUNID	VARCHAR	运行批次号
+maxRec	DOUBLE	当前运行批次数据上限
+
+输出	类型	描述
+N/A	N/A	N/A
+
+2) 存储过程相关表定义(表结构定义参考 4.4)：
+
+命名空间	表名	描述
+PAPOC	TESTTESTDATA	主数据原始表(包含摄像头，麦克风，双功器)
+PAPOC	TESTTESTDATA5	主数据原始表(包含GPS)
+PAPOC	TE_FT_RESULT1_2_3_ATE	R1,R2,R3测试数据源临时表(包含WIFI)
+PAPOC	TE_FT_RESULT1_2_3_PAL	R1,R2,R3测试数据源临时表(包含摄像头，麦克风，双功器)
+PAPOC	TE_FT_RESULT1_2_3_NEW	R1,R2,R3测试数据源临时表(包含GPS)
+PAPOC	RMODEL_R2ITEM_MATERIAL	物料类型的测试项信息
+PAPOC	RMODEL_INPUT	R2测试项数据临时表(当前物料类型及运行批次相关)
+PAPOC	RMODEL_INPUT_ALL	R2测试项数据总表
+PAPOC	RMODEL_VARIABLES	R存储过程参数配置表
+PAPOC	RMODEL_TEMP	R2测试项结果临时表
+PAPOC	RMODEL_MD_R2ITEM_ATE	测试数据中所有R2测试装备测试项信息
+PAPOC	RMODEL_MD_LOT	测试数据中所有的小批次物料信息
+PAPOC	RMODEL_MD_BATCH	测试数据中所有的大批次物料索引
+PAPOC	RMODEL_MD_R2ITEM	测试数据中包含的所有R2测试项索引
+PAPOC	RMODEL_MD_BATCH_LOT_R2ITEM	测试数据中所有的物料批次测试项信息
+PAPOC	RMODEL_MD_BATCH_LOT	测试数据中所有的物料批次信息
+PAPOC	RMODEL_INPUT_AGGR_T	R2测试项数据一次通过的数据
+PAPOC	RMODEL_INPUT_AGGR_FACT_T	R2测试项数据一次通过的统计数据
+PAPOC	RMODEL_INPUT_AGGR_FT	R2测试项失败而后测试通过的数据
+PAPOC	RMODEL_INPUT_AGGR_FACT_FT	R2测试项失败而后测试通过的统计数据
+PAPOC	RMODEL_INPUT_AGGR_FFT	R2测试项两次失败第三次通过的数据
+PAPOC	RMODEL_INPUT_AGGR_FACT_FFT	R2测试项两次失败第三次通过的统计数据
+PAPOC	RMODEL_INPUT_AGGR_FFF	R2测试项三次全部失败的数据
+PAPOC	RMODEL_INPUT_AGGR_FACT_FFF	R2测试项三次全部失败的统计数据
+PAPOC	RMODEL_INPUT_AGGR_ATE_RETEST_CNT	测试装备重测次数统计表
+
+4.1.3  预测模型运算
+[功能简述]：调用R存储过程与RServer运行环境通信，进行预测模型运算，预测结果写入HANA。预测模型以R服务方式供HANA访问。
+[界面展示]：N/A
+[设计概要]
+1）存储过程定义：
+命名空间	存储过程名	描述
+PAPOC	RMODEL_R2_PREDICT	预测模型R存储过程输入参数匹配，R存储过程调用，预测结果写入HANA
+PAPOC	RMODEL_USE_RSTAN_SRC	R预测模型
+
+RMODEL_R2_PREDICT
+输入	类型	描述
+MAT_ID_INDEX	INTEGER	物料类型索引
+RUNID	VARCHAR	运行批次号
+
+输出	类型	描述
+N/A	N/A	N/A
+
+RMODEL_USE_RSTAN_SRC
+输入	类型	描述
+factt	RMODEL_INPUT_AGGR_FACT_T	R2测试项数据一次通过的统计数据
+factft	RMODEL_INPUT_AGGR_FACT_FT	R2测试项失败而后测试通过的统计数据
+factfft	RMODEL_INPUT_AGGR_FACT_FFT	R2测试项两次失败第三次通过的统计数据
+factfff	RMODEL_INPUT_AGGR_FACT_FFF	R2测试项三次全部失败的统计数据
+ate	RMODEL_MD_R2ITEM_ATE	测试数据中所有R2测试装备测试项信息
+blr2	RMODEL_MD_BATCH_LOT_R2ITEM	测试数据中所有的物料批次测试项信息
+
+输出	类型	描述
+resultmat	RMODEL_RESULT_MATBLR2_TT	物料批次不良预测结果
+resultate	RMODEL_RESULT_ATE_TT	测试装备异常预测结果
+
+2) 存储过程相关表定义(表结构定义参考 4.4)：
+
+命名空间	表名	描述
+PAPOC	RMODEL_INPUT_AGGR_FACT_T	R2测试项数据一次通过的统计数据
+PAPOC	RMODEL_INPUT_AGGR_FACT_FT	R2测试项失败而后测试通过的统计数据
+PAPOC	RMODEL_INPUT_AGGR_FACT_FFT	R2测试项两次失败第三次通过的统计数据
+PAPOC	RMODEL_INPUT_AGGR_FACT_FFF	R2测试项三次全部失败的统计数据
+PAPOC	RMODEL_MD_BATCH_LOT_R2ITEM	测试数据中所有的物料批次测试项信息
+PAPOC	RMODEL_MD_BATCH_LOT	测试数据中所有的物料批次信息
+PAPOC	RMODEL_MD_R2ITEM_ATE	测试数据中所有R2测试装备测试项信息
+PAPOC	RMODEL_MD_MATERIAL_TYPE	物料类型主数据索引表
+PAPOC	RMODEL_R2_RESULT_BLR2	不同BATCH\LOT和测试项的组合的预测结果
+PAPOC	RMODEL_R2_RESULT_ATE	测试装备重测预测结果表，明细版
+PAPOC	RMODEL_INPUT	R2测试项数据临时表(当前物料类型及运行批次相关)
+PAPOC	RMODEL_INPUT_AGGR_FACT_T	R2测试项数据一次通过的统计数据
+PAPOC	RMODEL_R2_EXECUTION_TRACE	R2模型预测活动运行记录
+PAPOC	RMODEL_R2_RESULT_DENSITY_BL	物料批次不良预测密度分布表
+PAPOC	RMODEL_R2_RESULT_MEAN_BL	物料批次不良预测结果表，均值版
+PAPOC	RMODEL_R2_RESULT_DENSITY_ATE	测试装备重测预测密度分布表
+PAPOC	RMODEL_R2_RESULT_MEAN_ATE	测试装备重测预测结果表，均值版
+
+4.2.	自学习动态预警阈值模型
+4.2.1 物料批次自学习动态预警阈值计算 
+[功能简述]：基于物料批次不良率历史数据，动态计算预警阈值。以R服务方式供HANA访问。
+[界面展示]：N/A
+[设计概要]
+1）存储过程定义：
+命名空间	存储过程名	描述
+PAPOC	RMODEL_BL_PREDICT_THRESHOLD	调用R存储过程与RServer运行环境通信，计算预警阈值并输出结果到HANA
+PAPOC	RMODEL_USE_THRESHOLD_SRC	动态预警阈值模型
+
+RMODEL_BL_PREDICT_THRESHOLD
+输入	类型	描述
+N/A	N/A	N/A
+
+输出	类型	描述
+N/A	N/A	N/A
+
+RMODEL_USE_THRESHOLD_SRC
+输入	类型	描述
+statistic	RMODEL_BATCH_THRESHOLD_STA_TT	基于物料类型，预测模型运行批次的阈值运算基础数据集
+
+输出	类型	描述
+result	RMODEL_BATCH_THRESHOLD_TT	基于物料类型，预测模型运行批次的阈值结果
+
+2) 存储过程相关表定义(表结构定义参考 4.4)：
+
+命名空间	表名	描述
+PAPOC	RMODEL_PREDICTION_BL_THRESHOLD	物料批次阈值表
+PAPOC	RMODEL_R2_RESULT_MEAN_BL	物料批次不良预测结果表，均值版
+
+4.2.2 测试装备自学习动态预警阈值计算 
+[功能简述]：基于测试装备重测率历史数据，动态计算预警阈值。以R服务方式供HANA访问。
+[界面展示]：N/A
+[设计概要]
+1）存储过程定义：
+命名空间	存储过程名	描述
+PAPOC	RMODEL_ATE_PREDICT_THRESHOLD	调用R存储过程与RServer运行环境通信，计算预警阈值并输出结果到HANA
+PAPOC	RMODEL_USE_THRESHOLD_SRC	动态预警阈值模型
+
+RMODEL_ATE_PREDICT_THRESHOLD
+输入	类型	描述
+N/A	N/A	N/A
+
+输出	类型	描述
+N/A	N/A	N/A
+
+RMODEL_USE_THRESHOLD_SRC
+输入	类型	描述
+statistic	RMODEL_BATCH_THRESHOLD_STA_TT	基于物料类型，预测模型运行批次的阈值运算基础数据集
+
+输出	类型	描述
+result	RMODEL_BATCH_THRESHOLD_TT	基于物料类型，预测模型运行批次的阈值结果
+
+2) 存储过程相关表定义(表结构定义参考 4.4)：
+
+命名空间	表名	描述
+PAPOC	RMODEL_PREDICTION_ATE_THRESHOLD	物料批次阈值表
+PAPOC	RMODEL_R2_RESULT_MEAN_ATE	物料批次不良预测结果表，均值版
+
+4.3.	质量风险预测原型应用
+4.3.1  产品系列信息
+[功能简述]：提供产品系列信息。以WEB服务的方式供外部应用调用。
+[界面展示]：
+ 
+[设计概要]
+1）接口定义：
+接口url	接口说明	请求方式
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/PRODUCT_INFO?$format=json	查询产品系列信息	POST
+2) 接口相关 Calculation View 定义
+PRODUCT_INFO
+输入	类型	描述
+N/A	N/A	N/A
+
+输出	类型	描述
+PRODUCT_NAME	VARCHAR	产品名称
+
+3) 表相关定义(表结构定义参考 4.4)：
+
+命名空间	表名	描述
+PAPOC	PRODUCT_MATERIAL_INFO	产品物料信息
+
+
+4.3.2  预测模型运行统计
+[功能简述]：预测模型运行相关信息统计。以WEB服务的方式供外部应用调用。
+[界面展示]：
+ 
+[设计概要]
+1）接口定义：
+接口url	接口说明	请求方式
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/PREDICTION_RECORDS_COUNT?$format=json
+预测模型运行信息统计	POST
+2) 接口相关 Calculation View 定义
+PREDICTION_RECORDS_COUNT
+输入	类型	描述
+N/A	N/A	N/A
+
+输出	类型	描述
+TOTAL_COUNT	INTEGER	预测基础数据记录总数
+ENDTIME	VARCHAR	截止时间段
+MEASURE	INTEGER	视图聚集字段
+
+3) 表相关定义(表结构定义参考 4.4)：
+命名空间	表名	描述
+PAPOC	RMODEL_R2_EXECUTION_TRACE	R2模型预测活动运行记录
+
+4.3.3  物料批次预警汇总
+ [功能简述]：获取产品系列下所有物料批次预警汇总信息。以WEB服务的方式供外部应用调用。
+[界面展示]：
+
+[设计概要]
+1）接口定义：
+接口url	接口说明	请求方式
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/MATERIAL_CLAIM_INFO_V1?$format=json&$orderby=SYMBOL_INDEX,PRODUCT_NAME	获取产品系列下所有物料批次预警汇总信息	POST
+2) 接口相关 Calculation View 定义
+MATERIAL_CLAIM_INFO_V1
+输入	类型	描述
+N/A	N/A	N/A
+
+输出	类型	描述
+MATERIAL_TYPE_ID	VARCHAR	物料类型ID
+SYMBOL_INDEX	INTEGER	报警级别
+SYMBOL	VARCHAR	报警级别描述
+PRODUCT_NAME	VARCHAR	产品系列名称
+ENDTIME	VARCHAR	最新报警时间
+FACTORY_COUNT	INTEGER	受影响的厂商数量
+DEVICE_COUNT	INTEGER	受影响的物料数量
+MEASURE	INTEGER	受影响的批次数量
+
+3) 表相关定义(表结构定义参考 4.4)：
+命名空间	表名	描述
+PAPOC	RMODEL_R2_RESULT_MEAN_BL	物料批次不良预测结果表，均值版
+PAPOC	RMODEL_R2_EXECUTION_TRACE	R2模型预测活动运行记录
+PAPOC	RMODEL_MD_MATERIAL_TYPE	物料类型主数据索引表
+PAPOC	RMODEL_PREDICTION_BL_THRESHOLD	物料批次阈值表
+PAPOC	RMODEL_MD_BATCH_LOT_R2ITEM	测试数据中所有的物料批次测试项信息
+PAPOC	PRODUCT_MATERIAL_INFO	产品物料信息，简版
+PAPOC	RMODEL_MD_MATERIAL_PROD	产品物料信息，完全版
+
+4.3.4  物料类型统计信息
+ [功能简述]：获取物料类型相关统计信息。以WEB服务的方式供外部应用调用。
+[界面展示]：
+
+[设计概要]
+1）接口定义：
+接口url	接口说明	请求方式
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/MATERIAL_DATA_INDEX_IP(MATERIAL_ID_IP='13080322',PRODUCT_NAME_IP='NEXT')/Results?$format=json	获取物料类型相关统计信息	POST
+2) 接口相关 Calculation View 定义
+MATERIAL_DATA_INFO
+输入	类型	描述
+MATERIAL_ID_IP	VARCHAR	物料类型ID
+PRODUCT_NAME_IP	VARCHAR	产品系列名称
+
+输出	类型	描述
+ENDTIME	VARCHAR	最新报警时间
+MATERIAL_TYPE_ID	VARCHAR	物料类型ID
+MATERIAL_NAME	VARCHAR	物料名称
+PRODUCT_NAME	VARCHAR	产品系列名称
+TOTAL_COUNT	INTEGER	预测用生产测试数据总量
+MODEL_AGG	VARCHAR	PRODUCT MODEL集合(以|分隔)
+M_THRESH	DOUBLE	物料批次阈值
+A_THRESH	DOUBLE	测试装备阈值
+
+3) 表相关定义(表结构定义参考 4.4)：
+命名空间	表名	描述
+PAPOC	RMODEL_MD_MATERIAL_TYPE	物料类型主数据索引表
+PAPOC	RMODEL_R2_EXECUTION_TRACE	R2模型预测活动运行记录
+PAPOC	PRODUCT_MATERIAL_INFO	产品物料信息,简版
+PAPOC	RMODEL_R2_RESULT_FACT_BL	物料批次不良测试统计结果表
+PAPOC	RMODEL_MD_MATERIAL_PROD	产品物料信息，完全版
+PAPOC	RMODEL_PREDICTION_BL_THRESHOLD	物料批次阈值表
+PAPOC	RMODEL_PREDICTION_ATE_THRESHOLD	测试装备阈值表
+
+4.3.5  物料批次预测结果
+ [功能简述]：通过输入物料类型ID，获取当前物料类型下所有物料批次的预测详细信息。如物料大批次名称，物料小批次名称，报警级别，生产厂商，VENDOR信息，以及所有相关联的产线信息，默认按照报警级别进行排序。以WEB服务的方式供外部应用调用。
+[界面展示]：
+
+[设计概要]
+1）接口定义：
+接口url	接口说明	请求方式
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/CLAIM_DETAIL_INDEX_IP(MATERIAL_ID_IP='13080322')/Results?$format=json&$orderby=SYMBOL_INDEX	获取物料批次预测结果及报警信息，供列表使用	POST
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/ALL_MATERIAL_LOT_INDEX_IP(MATERIAL_ID_IP='13080322')/Results?$format=json&$orderby=BL_INDEX	获取物料批次预测结果及报警信息，供图表使用	POST
+2) 接口相关 Calculation View 定义
+CLAIM_DETAIL_INFO
+输入	类型	描述
+MATERIAL_ID_IP	VARCHAR	物料类型ID
+
+输出	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+MEAN	DOUBLE	预测结果
+MATERIAL_NAME	VARCHAR	物料名称
+MATERIAL_BATCH	VARCHAR	物料大批次名称
+MATERIAL_LOT	VARCHAR	物料小批次名称
+BL_INDEX	INTEGER	物料大批次小批次索引
+SYMBOL_INDEX	INTEGER	报警级别
+FACTORY	VARCHAR	厂商名称
+VENDOR_ID	VARCHAR	供应商名称
+LINE_AGG	VARCHAR	生产产线集合(以|分隔)
+MEASURE	INTEGER	视图聚集字段
+SYMBOL	VARCHAR	报警级别描述
+FAIL_CNT	DOUBLE	FFF统计次数
+TOTAL_CNT	DOUBLE	R2测试总次数
+FAIL_RATE	DOUBLE	不良率统计值
+UNCERTAINTY	DOUBLE	不确定性
+
+PREDICTION_ALL_MATERIAL_L
+输入	类型	描述
+MATERIAL_ID_IP	VARCHAR	物料类型ID
+
+输出	类型	描述
+MEAN	DOUBLE	预测结果值
+ERRL	DOUBLE	预测结果最小值
+ERRU	DOUBLE	预测结果最大值
+BL_INDEX	INTEGER	物料大批次小批次索引
+MATERIAL_TYPE_ID	VARCHAR	物料类型ID
+MATERIAL_BATCH	VARCHAR	物料大批次名称
+MATERIAL_LOT	VARCHAR	物料小批次名称
+MEASURE	INTEGER	视图聚集字段
+SYMBOL_INDEX	INTEGER	报警级别
+SYMBOL	INTEGER	报警级别描述
+FAIL_CNT	DOUBLE	FFF统计次数
+TOTAL_CNT	DOUBLE	R2测试总次数
+FAIL_RATE	DOUBLE	不良率统计值
+
+3) 表相关定义(表结构定义参考 4.4)：
+命名空间	表名	描述
+PAPOC	RMODEL_R2_RESULT_MEAN_BL	物料批次不良预测结果表，均值版
+PAPOC	RMODEL_R2_RESULT_FACT_BL	物料批次不良测试统计结果表
+PAPOC	RMODEL_R2_EXECUTION_TRACE	R2模型预测活动运行记录
+PAPOC	RMODEL_MD_MATERIAL_TYPE	物料类型主数据索引表
+PAPOC	RMODEL_PREDICTION_BL_THRESHOLD	物料批次阈值表
+PAPOC	RMODEL_MD_BATCH_LOT_R2ITEM	测试数据中所有的物料批次测试项信息
+PAPOC	RMODEL_MD_MATERIAL_PROD	产品物料信息，完全版
+
+4.3.6  物料批次预测结果时序分布
+[功能简述]：获取按照时间序列排序的物料批次的预测结果。以WEB服务的方式供外部应用调用。
+[界面展示]：
+
+[设计概要]
+1）接口定义：
+接口url	接口说明	请求方式
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/SINGLE_TIME_BATCH_LOT_INDEX_IP(MATERIAL_ID_IP='13080322',BL_INDEX_IP=1)/Results?$format=json	获取按照时间序列排序的物料批次的预测结果	POST
+2) 接口相关 Calculation View 定义
+PREDICTION_SINGLE_TIME_BATCH_LOT
+输入	类型	描述
+MATERIAL_ID_IP	VARCHAR	物料类型ID
+BL_INDEX_IP	INTEGER	物料大批次小批次索引
+
+输出	类型	描述
+RUNID	INTEGER	时间序列值
+BL_INDEX	INTEGER	物料大批次小批次索引
+MEAN	DOUBLE	预测均值
+ERRL	DOUBLE	预测分布下限
+ERRU	DOUBLE	预测分布上限
+MATERIAL_TYPE_ID	VARCHAR	物料类型ID
+MATERIAL_NAME	VARCHAR	物料名称
+THRESHOLD	DOUBLE	阈值
+FAIL_CNT	DOUBLE	FFF统计次数
+TOTAL＿CNT	DOUBLE	R2测试总次数
+FAIL_RATE	DOUBLE	不良率统计值
+SYMBOL_INDEX	INTEGER	报警级别
+SYMBOL	VARCHAR	报警级别描述
+
+3) 表相关定义(表结构定义参考 4.4)：
+命名空间	表名	描述
+PAPOC	RMODEL_MD_MATERIAL_TYPE	物料类型主数据索引表
+PAPOC	RMODEL_R2_RESULT_MEAN_BL	物料批次不良预测结果表，均值版
+PAPOC	RMODEL_R2_RESULT_FACT_BL	物料批次不良测试统计结果表
+PAPOC	RMODEL_PREDICTION_BL_THRESHOLD	物料批次阈值表
+
+4.3.7  物料批次预测结果密度分布
+[功能简述]：获取物料批次预测结果的密度分布。以WEB服务的方式供外部应用调用。
+[界面展示]：
+
+[设计概要]
+1）接口定义：
+接口url	接口说明	请求方式
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/SINGLE_DENSITY_BATCH_LOT_INDEX_IP(MATERIAL_ID_IP='13080322',BL_INDEX_IP=1)/Results?$format=json	获取物料批次最新预测结果的密度分布	POST
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/SINGLE_DENSITY_BL_INDEX_BY_RUN_IP(MATERIAL_ID_IP='13080322',BL_INDEX_IP=1, RUNID_IP='10')/Results?$format=json	按运行批次号获取物料批次所有预测运行批次的预测结果密度分布	POST
+2) 接口相关 Calculation View 定义
+PREDICTION_SINGLE_DENSITY_BATCH_LOT
+输入	类型	描述
+MATERIAL_ID_IP	VARCHAR	物料类型ID
+BL_INDEX_IP	INTEGER	物料大批次小批次索引
+
+输出	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+BL_INDEX	INTEGER	物料大批次小批次索引
+MIDS	DOUBLE	密度图横坐标
+COUNT_NUM	INTEGER	测试物料数量(纵坐标)
+DENSITY	DOUBLE	落在分布区间内的密度
+MEASURE	INTEGER	视图聚集字段
+
+PREDICTION_SINGLE_DENSITY_BL_BY_RUN
+输入	类型	描述
+MATERIAL_ID_IP	VARCHAR	物料类型ID
+BL_INDEX_IP	INTEGER	大批次小批次索引
+RUNID_IP	VARCHAR	运行批次号
+
+输出	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+BL_INDEX	INTEGER	大批次小批次索引
+MIDS	DOUBLE	预测密度分布横轴
+COUNT_NUM	INTEGER	预测密度分布纵轴
+DENSITY	DOUBLE	所在分布区间的密度
+
+3) 表相关定义(表结构定义参考 4.4)：
+命名空间	表名	描述
+PAPOC	RMODEL_MD_MATERIAL_TYPE	物料类型主数据索引表
+PAPOC	RMODEL_R2_RESULT_DENSITY_BL	物料批次不良预测密度分布表
+PAPOC	RMODEL_R2_EXECUTION_TRACE	R2模型预测活动运行记录
+
+4.3.8  测试装备预警汇总
+[功能简述]：获取产品系列下所有测试装备预警汇总信息。以WEB服务的方式供外部应用调用。
+[界面展示]：
+
+[设计概要]
+1）接口定义：
+接口url	接口说明	请求方式
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/PREDICTION_ATE_COUNT_V1?$format=json&$orderby=SYMBOL_INDEX,PRODUCT_NAME	获取产品系列下所有测试装备预警汇总信息	POST
+2) 接口相关 Calculation View 定义
+PREDICTION_ATE_COUNT_V1
+输入	类型	描述
+N/A	N/A	N/A
+
+输出	类型	描述
+ENDTIME	VARCHAR	测试最终时间
+ATE_COUNT	INTEGER	受影响的测试装备数量
+FACTORY_COUNT	INTEGER	受影响的厂商数量
+MATERIAL_COUNT	INTEGER	受影响的物料总数
+
+3) 表相关定义(表结构定义参考 4.4)：
+命名空间	表名	描述
+PAPOC	RMODEL_MD_MATERIAL_TYPE	物料类型主数据索引表
+PAPOC	RMODEL_MD_R2ITEM_ATE	测试数据中所有R2测试装备测试项信息
+PAPOC	RMODEL_R2_EXECUTION_TRACE	R2模型预测活动运行记录
+PAPOC	RMODEL_MD_MATERIAL_PROD	产品物料信息，完全版
+PAPOC	RMODEL_R2_RESULT_MEAN_ATE	测试装备重测预测结果表，均值版
+PAPOC	RMODEL_PREDICTION_ATE_THRESHOLD	测试装备阈值表
+PAPOC	PRODUCT_MATERIAL_INFO	产品物料信息,简版
+PAPOC	RMODEL_INPUT_AGGR_ATE_RETEST_CNT	测试装备重测次数统计表
+PAPOC	TE_FT_RESULT1_2_3_PAL	R1,R2,R3测试数据源临时表(包含摄像头，麦克风，双功器)
+PAPOC	TE_FT_RESULT1_2_3_NEW	R1,R2,R3测试数据源临时表(包含GPS)
+PAPOC	TE_FT_RESULT1_2_3_ATE	R1,R2,R3测试数据源临时表(包含WIFI)
+
+4.3.9  测试装备预测结果
+[功能简述]：获取当前物料类型下所有测试装备的预测信息。以WEB服务的方式供外部应用调用。
+[界面展示]：
+
+[设计概要]
+1）接口定义：
+接口url	接口说明	请求方式
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/ATE_LIP(MATERIAL_ID_IP='23060194')/Results?$format=json&$orderby=SYMBOLINDEX	获取当前物料类型下所有测试装备的预测信息，用于列表使用	POST
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/ATE_LIP(MATERIAL_ID_IP='23060194')/Results?$format=json	获取当前物料类型下所有测试装备的预测信息，用于图表使用	POST
+2) 接口相关 Calculation View 定义
+PREDICTION_ATE_ALL
+输入	类型	描述
+MATERIAL_ID_IP	VARCHAR	物料类型ID
+
+输出	类型	描述
+ATE_NAME	VARCHAR	测试装备名称
+PLANT	VARCHAR	生产厂商名称
+PROD_LINE	VARCHAR	产线名称
+STATION	VARCHAR	测试站点名称
+MEAN	DOUBLE	预测均值
+ERRL	DOUBLE	预测分布下限
+ERRU	DOUBLE	预测分布上限
+UNCERTAINTY	DOUBLE	可靠性
+SYMBOL	VARCHAR	报警级别描述
+RETEST_CNT	DOUBLE	FFT,FT统计次数
+TOTAL_CNT	DOUBLE	R2测试总次数
+RETEST_RATE	DOUBLE	重测率统计值
+
+3) 表相关定义(表结构定义参考 4.4)：
+命名空间	表名	描述
+PAPOC	RMODEL_MD_MATERIAL_TYPE	物料类型主数据索引表
+PAPOC	RMODEL_MD_R2ITEM_ATE	测试数据中所有R2测试装备测试项信息
+PAPOC	RMODEL_R2_EXECUTION_TRACE	R2模型预测活动运行记录
+PAPOC	RMODEL_MD_MATERIAL_PROD	产品物料信息，完全版
+PAPOC	RMODEL_R2_RESULT_MEAN_ATE	测试装备重测预测结果表，均值版
+PAPOC	RMODEL_PREDICTION_ATE_THRESHOLD	测试装备阈值表
+PAPOC	RMODEL_R2_RESULT_FACT_ATE	测试装备重测统计结果表
+PAPOC	RMODEL_MD_ATE_INDEX_MAPPING	测试装备索引映射(统计结果表<->预测结果表)
+PAPOC	TE_FT_RESULT1_2_3_PAL	R1,R2,R3测试数据源临时表(包含摄像头，麦克风，双功器)
+PAPOC	TE_FT_RESULT1_2_3_NEW	R1,R2,R3测试数据源临时表(包含GPS)
+PAPOC	TE_FT_RESULT1_2_3_ATE	R1,R2,R3测试数据源临时表(包含WIFI)
+
+4.3.10  测试装备预测结果时序分布
+[功能简述]：获取按照时间序列排序的测试装备的预测结果。以WEB服务的方式供外部应用调用。
+[界面展示]：
+
+[设计概要]
+1）接口定义：
+接口url	接口说明	请求方式
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/SINGLE_MACHINE_TIME_INDEX_IP(MATERIAL_ID_IP='GPS',ATE_ID_IP='ST-Addax1168N0017')/Results?$format=json	获取按照时间序列排序的测试装备的预测结果	POST
+2) 接口相关 Calculation View 定义
+PREDICTION_SINGLE_MACHINE_TIME
+输入	类型	描述
+MATERIAL_ID_IP	VARCHAR	物料类型ID
+ATE_ID_IP	VARCHAR	测试装备ID
+
+输出	类型	描述
+MATERIAL_ID_INDEX	VARCHAR	物料类型索引
+RUNID	INTEGER	时间序列值
+MEAN	DOUBLE	预测均值
+ERRL	DOUBLE	预测分布下限
+ERRU	DOUBLE	预测分布上限
+MATERIAL_TYPE_ID	VARCHAR	物料类型ID
+ATE_ID	VARCHAR	测试装备ID
+THRESHOLD	DOUBLE	阈值
+RETEST_CNT	DOUBLE	FFT,FT统计次数
+TOTAL＿CNT	DOUBLE	R2测试总次数
+RETEST_RATE	DOUBLE	重测率统计值
+SYMBOL_INDEX	INTEGER	报警级别
+SYMBOL	VARCHAR	报警级别描述
+
+3) 表相关定义(表结构定义参考 4.4)：
+命名空间	表名	描述
+PAPOC	RMODEL_MD_MATERIAL_TYPE	物料类型主数据索引表
+PAPOC	RMODEL_R2_RESULT_MEAN_ATE	测试装备不良预测结果表，均值版
+PAPOC	RMODEL_R2_RESULT_FACT_ATE	测试装备不良测试统计结果表
+PAPOC	RMODEL_PREDICTION_ATE_THRESHOLD	测试装备阈值表
+PAPOC	RMODEL_R2_EXECUTION_TRACE	R2模型预测活动运行记录
+PAPOC	RMODEL_MD_ATE_INDEX_MAPPING	测试装备索引映射(统计结果表<->预测结果表)
+PAPOC	RMODEL_MD_BATCH_LOT_R2ITEM	测试数据中所有的物料批次测试项信息
+PAPOC	RMODEL_MD_R2ITEM_ATE	测试数据中所有R2测试装备测试项信息
+
+4.3.11  测试装备预测结果密度分布
+[功能简述]：获取测试装备预测结果的密度分布。以WEB服务的方式供外部应用调用。
+[界面展示]：
+
+[设计概要]
+1）接口定义：
+接口url	接口说明	请求方式
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/SINGLE_MACHINE_DENSITY_INDEX_IP(MATERIAL_ID_IP='GPS',ATE_ID_IP='ST-Addax1168N0017')/Results?$format=json	获取测试装备最新预测结果的密度分布	POST
+http://fu10hdb09:8042/com/sap/cdp/qrpa/services/predictions/prediction.xsodata/SINGLE_MACHINE_DENSITY_INDEX_BY_RUN_IP(MATERIAL_ID_IP='GPS',ATE_ID_IP='ST-Addax1168N0017',RUNID_IP='10')/Results?$format=json	按运行批次号获取测试装备所有预测运行批次的预测结果密度分布	POST
+2) 接口相关 Calculation View 定义
+PREDICTION_SINGLE_MACHINE_DENSITY
+输入	类型	描述
+MATERIAL_ID_IP	VARCHAR	物料类型ID
+ATE_ID_IP	VARCHAR	测试装备ID
+
+输出	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+RUNID	INTEGER	时间序列
+MIDS	DOUBLE	横坐标值
+COUNT_NUM	INTEGER	测试物料数量
+ATE_ID	VARCHAR	测试装备名称
+DENSITY	DOUBLE	落在分布区间内的密度
+
+PREDICTION_SINGLE_MACHINE_DENSITY_BY_RUN
+输入	类型	描述
+MATERIAL_ID_IP	VARCHAR	物料类型ID
+ATE_ID_IP	VARCHAR	测试装备ID
+RUNID_IP	VARCHAR	运行批次号
+
+输出	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+RUNID	VARCHAR	运行批次号
+MIDS	DOUBLE	预测密度分布横轴
+COUNT_NUM	INTEGER	预测密度分布纵轴
+ATE_ID	VARCHAR	测试装备ID
+
+3) 表相关定义(表结构定义参考 4.4)：
+命名空间	表名	描述
+PAPOC	RMODEL_MD_MATERIAL_TYPE	物料类型主数据索引表
+PAPOC	RMODEL_R2_RESULT_DENSITY_ATE	测试装备不良预测密度分布表
+PAPOC	RMODEL_R2_EXECUTION_TRACE	R2模型预测活动运行记录
+PAPOC	RMODEL_MD_BATCH_LOT_R2ITEM	测试数据中所有的物料批次测试项信息
+PAPOC	RMODEL_MD_R2ITEM_ATE	测试数据中所有R2测试装备测试项信息
+4.4.	数据模型定义
+RMODEL_MD_BATCH:
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+BATCH_ID	VARCHAR	物料大批次ID
+BATCH_INDEX	INTEGER	物料大批次索引
+RUNID	VARCHAR	运行批次号
+
+RMODEL_MD_LOT：
+列名	类型	描述
+LOT_ID	VARCHAR	物料小批次ID
+BATCH_ID	VARCHAR	小批次所在大批次ID
+MATERIAL_ID	VARCHAR	物料类型ID
+MATERIAL_NAME	VARCHAR	物料名称
+VENDOR_ID	VARCHAR	供应商ID
+LOT_INDEX	INTEGER	物料小批次索引
+RUNID	VARCHAR	运行批次号
+
+RMODEL_MD_BATCH_LOT：
+列名	类型	描述
+MATERIAL_ID_INDEX	VARCHAR	物料类型索引
+MATERIAL_BATCH	VARCHAR	物料大批次ID
+B_INDEX	INTEGER	物料大批次索引
+MATERIAL_LOT	VARCHAR	物料小批次ID
+LOT_START_TIME	TIMESTAMP	小批次测试起始时间戳
+LOT_START_TIME_INDEX	VARCHAR	小批次测试起始时间戳索引
+BL_INDEX	INTEGER	物料大批次小批次索引信息
+CNT	INTEGER	该物料批次的测试物料总数 
+RUNID	VARCHAR	运行批次号
+
+RMODEL_MD_BATCH_LOT_R2ITEM：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+MATERIAL_BATCH	VARCHAR	物料大批次ID
+MATERIAL_LOT	VRCHAR	物料小批次ID
+BL_INDEX	INTEGER	物料大批次小批次索引
+R2_TEST_ITEM_NAME	VARCHAR	测试项名称
+BLR_INDEX	INTEGER	大批次小批次测试项索引
+CNT	INTEGER	测试手机总数
+RUNID	VARCHAR	运行批次号
+
+RMODEL_MD_R2ITEM:
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+R2_TEST_ITEM_NAME	VARCHAR	R2测试项名称
+R2ITEM_INDEX	INTEGER	测试项索引
+RUNID	VARCHAR	运行批次号
+
+RMODEL_MD_R2ITEM_ATE:
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+R2_TEST_ITEM_NAME	VARCHAR	R2测试项名称
+ATE_ID	VARCHAR	测试装备ID
+ATE_INDEX	INTEGER	测试装备索引
+RUNID	VARCHAR	运行批次号
+
+RMODEL_R2ITEM_MATERIAL:
+列名	类型	描述
+MATERIAL_ID	VARCHAR	物料类型ID
+MATERIAL_NAME	VARCHAR	物料名称
+R2_TEST_ITEM_NAME	VARCHAR	R2测试项名称
+
+RMODEL_INPUT_AGGR_T:
+列名	类型	描述
+MATERIAL_ID	VARCHAR	物料类型ID
+MATERIAL_BATCH	VARCHAR	Batch 大批次号
+MATERIAL_LOT	VARCHAR	Lot 小批次号
+R2_TEST_ITEM_NAME	VARCHAR	R2测试项
+ATE_INDEX	INTEGER	第一组测试结果的测试装备索引
+T_CNT	INTEGER	T测试次数
+RUNID	VARCHAR	运行批次号
+
+RMODEL_INPUT_AGGR_FT:
+列名	类型	描述
+MATERIAL_ID	VARCHAR	物料类型ID
+MATERIAL_BATCH	VARCHAR	Batch 大批次号
+MATERIAL_LOT	VARCHAR	Lot 小批次号
+R2_TEST_ITEM_NAME	VARCHAR	R2测试项
+TEST1_ATE_INDEX	INTEGER	第一组测试结果的测试装备索引
+TEST2_ATE_INDEX	INTEGER	第二组测试结果的测试装备索引
+FT_CNT	INTEGER	FT测试次数
+RUNID	VARCHAR	运行批次号
+
+RMODEL_INPUT_AGGR_FFT:
+列名	类型	描述
+MATERIAL_ID	VARCHAR	物料类型ID
+MATERIAL_BATCH	VARCHAR	Batch 大批次号
+MATERIAL_LOT	VARCHAR	Lot 小批次号
+R2_TEST_ITEM_NAME	VARCHAR	R2测试项
+TEST1_ATE_INDEX	INTEGER	第一组测试结果的测试装备索引
+TEST2_ATE_INDEX	INTEGER	第二组测试结果的测试装备索引
+TEST3_ATE_INDEX	INTEGER	第三组测试结果的测试装备索引
+FFT_CNT	INTEGER	FFT测试次数
+RUNID	VARCHAR	运行批次号
+
+RMODEL_INPUT_AGGR_FFF:
+列名	类型	描述
+MATERIAL_ID	VARCHAR	物料类型ID
+MATERIAL_BATCH	VARCHAR	Batch 大批次号
+MATERIAL_LOT	VARCHAR	Lot 小批次号
+R2_TEST_ITEM_NAME	VARCHAR	R2测试项
+TEST1_ATE_INDEX	INTEGER	第一组测试结果的测试装备索引
+TEST2_ATE_INDEX	INTEGER	第二组测试结果的测试装备索引
+TEST3_ATE_INDEX	INTEGER	第三组测试结果的测试装备索引
+FFF_CNT	INTEGER	FFF测试次数
+RUNID	VARCHAR	运行批次号
+
+RMODEL_INPUT_AGGR_FACT_T ：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+MATERIAL_LOT_INDEX	INTEGER	Lot 小批次号索引
+MATERIAL_BATCH_INDEX	INTEGER	Batch 大批次索引
+R2_TEST_ITEM_INDEX	INTEGER	R2测试项索引
+BATCH_LOT_R2ITEM_INDEX	INTEGER	Batch Lot R2测试项联合索引
+ATE_INDEX	INTEGER	第一组测试结果的测试装备索引
+T_CNT	INTEGER	T测试次数
+RUNID	VARCHAR	运行批次号
+
+RMODEL_INPUT_AGGR_FACT_FT ：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+MATERIAL_LOT_INDEX	INTEGER	Lot 小批次号索引
+MATERIAL_BATCH_INDEX	INTEGER	Batch 大批次索引
+R2_TEST_ITEM_INDEX	INTEGER	R2测试项索引
+BATCH_LOT_R2ITEM_INDEX	INTEGER	Batch Lot R2测试项联合索引
+TEST1_ATE_INDEX	INTEGER	第一组测试结果的测试装备索引
+TEST2_ATE_INDEX	INTEGER	第二组测试结果的测试装备索引
+FT_CNT	INTEGER	FT测试次数
+RUNID	VARCHAR	运行批次号
+
+RMODEL_INPUT_AGGR_FACT_FFT ：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+MATERIAL_LOT_INDEX	INTEGER	Lot 小批次号索引
+MATERIAL_BATCH_INDEX	INTEGER	Batch 大批次索引
+R2_TEST_ITEM_INDEX	INTEGER	R2测试项索引
+BATCH_LOT_R2ITEM_INDEX	INTEGER	Batch Lot R2测试项联合索引
+TEST1_ATE_INDEX	INTEGER	第一组测试结果的测试装备索引
+TEST2_ATE_INDEX	INTEGER	第二组测试结果的测试装备索引
+TEST3_ATE_INDEX	INTEGER	第三组测试结果的测试装备索引
+FFT_CNT	INTEGER	FFT测试次数
+RUNID	VARCHAR	运行批次号
+
+RMODEL_INPUT_AGGR_FACT_FFF ：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+MATERIAL_LOT_INDEX	INTEGER	Lot 小批次号索引
+MATERIAL_BATCH_INDEX	INTEGER	Batch 大批次索引
+R2_TEST_ITEM_INDEX	INTEGER	R2测试项索引
+BATCH_LOT_R2ITEM_INDEX	INTEGER	Batch Lot R2测试项联合索引
+TEST1_ATE_INDEX	INTEGER	第一组测试结果的测试装备索引
+TEST2_ATE_INDEX	INTEGER	第二组测试结果的测试装备索引
+TEST3_ATE_INDEX	INTEGER	第三组测试结果的测试装备索引
+FFF_CNT	INTEGER	FFF测试次数
+RUNID	VARCHAR	运行批次号
+
+RMODEL_R2_RESULT_BLR2：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料的索引值
+RUNID	VARCHAR	基于时间序列的Sequence number
+BLR2_INDEX	INTEGER	Batch的索引值
+MIDS	DOUBLE	柱状图中单个立柱的中间点
+COUNT	DOUBLE	密度图落在某区间内的概率值的个数
+DENSITY	DOUBLE	密度值
+MEAN	DOUBLE	预测均值
+ERR1	DOUBLE	预测分布下限
+ERR2	DOUBLE	预测分布上限
+
+RMODEL_R2_EXECUTION_TRACE:
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+RUNID	VARCHAR	时间序列sequence number
+STARTTIME	TIMESTAMP	预测计算起始时间
+ENDTIME	TIMESTAMP	预测计算终止时间
+DURATION	DOUBLE	预测计算运行时长(单位：秒)
+SOURCE_DATA_CNT	DOUBLE	所有测试的物料总数
+AGGR_DATA_CNNT	DOUBLE	该物料类型在所有四张表中的记录总数
+LASTRUN	INTEGER	最新运行标示
+
+PRODUCT_MATERIAL_INFO:
+列名	类型	描述
+PRODUCT_NAME	VARCHAR	产品名称
+MATERIAL_ID	VARCHAR	物料类型ID
+
+RMODEL_R2_RESULT_MEAN_BL：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+RUNID	VARCHAR	运行批次号
+BL_INDEX	INTEGER	Batch Lot批次索引
+MEAN	DOUBLE	预测均值
+ERRL	DOUBLE	预测分布下限
+ERRU	DOUBLE	预测分布上限
+
+RMODEL_MD_MATERIAL_PROD：
+列名	类型	描述
+RAW_MAT_ID	VARCHAR	物料类型ID
+SERIAL_NUMBER	VARCHAR	产品序列号
+MATERIAL_LOT	VARCHAR	LOT 小批次ID
+MATERIAL_BATCH	VARCHAR	BATCH 大批次ID
+LINE_ID	VARCHAR	产线ID
+VENDOR_ID	VARCHAR	供应商ID
+PROD_MODEL	VARCHAR	产品型号
+FACTORY	VARCHAR	工厂
+
+RMODEL_R2_RESULT_MEAN_ATE：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型ID
+RUNID	VARCHAR	运行批次号
+ATE_INDEX	INTEGER	测试装备索引
+MEAN	DOUBLE	预测均值
+ERRL	DOUBLE	预测分布下限
+ERRU	DOUBLE	预测分布上限
+
+RMODEL_PREDICTION_BL_THRESHOLD：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型ID
+THRESHOLD	DOUBLE	阈值
+UNCER	DOUBLE	可靠性
+RUNID	VARCHAR	运行批次号
+
+RMODEL_PREDICTION_ATE_THRESHOLD：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型ID
+THRESHOLD	DOUBLE	阈值
+UNCER	DOUBLE	可靠性
+RUNID	VARCHAR	运行批次号
+
+RMODEL_MD_ATE_INDEX_MAPPING：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型ID
+RUNID	VARCHAR	运行批次号
+R2ATE_INDEX	INTEGER	统计值表测试装备索引
+ATE_INDEX	INTEGER	预测值表测试装备索引
+
+RMODEL_INPUT：
+列名	类型	描述
+R2_RESULT_ID	VARCHAR	R2测试结果ID
+SERIAL_NUMBER	VARCHAR	产品序列号
+MATERIAL_ID	VARCHAR	物料类型ID
+MATERIAL_BATCH	VARCHAR	Batch 大批次ID
+MATERIAL_LOT	VARCHAR	LOT 小批次ID
+R2_TEST_ITEM_NAME	VARCHAR	R2测试项名
+ATE_ID	VARCHAR	测试装备ID
+R2_RESULT	INTEGER	R2测试结果
+
+RMODEL_INPUT_ALL：
+列名	类型	描述
+R2_RESULT_ID	VARCHAR	R2测试结果ID
+SERIAL_NUMBER	VARCHAR	产品序列号
+MATERIAL_ID	VARCHAR	物料类型ID
+MATERIAL_BATCH	VARCHAR	Batch 大批次ID
+MATERIAL_LOT	VARCHAR	LOT 小批次ID
+R2_TEST_ITEM_NAME	VARCHAR	R2测试项名
+ATE_ID	VARCHAR	测试装备ID
+R2_RESULT	INTEGER	R2测试结果
+RUNID	VARCHAR	运行批次号
+
+RMODEL_R2_RESULT_FACT_BL：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+RUNID	VARCHAR	运行批次号
+BL_INDEX	INTEGER	Batch Lot批次索引
+FAIL_CNT	DOUBLE	FFF测试次数
+TOTAL_CNT	DOUBLE	总测试次数
+FAIL_RATE	DOUBLE	不良率(FAIL_CNT/TOTAL/CNT)
+
+RMODEL_R2_RESULT_FACT_ATE：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+RUNID	VARCHAR	运行批次号
+ATE_INDEX	INTEGER	测试装备索引
+RETEST_CNT	DOUBLE	FFT，FT测试次数
+TOTAL_CNT	DOUBLE	总测试次数
+RETEST_RATE	DOUBLE	重测率(RETEST_CNT /TOTAL/CNT)
+
+RMODEL_R2_RESULT_DENSITY_BL：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+RUNID	VARCHAR	运行批次号
+BL_INDEX	INTEGER	Batch Lot批次索引
+MIDS	DOUBLE	预测结果分布中值
+COUNT	DOUBLE	预测结果所在分布区间出现次数
+DENSITY	DOUBLE	预测结果所在分布区间密度
+
+RMODEL_R2_RESULT_DENSITY_ATE：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+RUNID	VARCHAR	运行批次号
+ATE_INDEX	INTEGER	测试装备批次索引
+MIDS	DOUBLE	预测结果分布中值
+COUNT	DOUBLE	预测结果所在分布区间出现次数
+DENSITY	DOUBLE	预测结果所在分布区间密度
+
+RMODEL_INPUT_DATA_CNT：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+TOTAL_CNT	INTEGER	物料数量
+INTEVAL	VARCHAR	运行批次号
+
+RMODEL_MD_MATERIAL_TYPE：
+列名	类型	描述
+MATERIAL_TYPE_ID	VARCHAR	物料类型ID
+MATERIAL_TYPE_INDEX	INTEGER	物料类型索引
+MATERIAL_NAME	VARCHAR	物料类型描述
+
+RMODEL_INPUT_AGGR_ATE_RETEST_CNT：
+列名	类型	描述
+MATERIAL_ID_INDEX	INTEGER	物料类型索引
+RUNID	VARCHAR	运行批次号
+ATE_INDEX	INTEGER	测试装备索引
+RETEST_CNT	DOUBLE	重测次数统计
+
+TE_FT_RESULT1_2_3_PAL/ TE_FT_RESULT1_2_3_NEW/ TE_FT_RESULT1_2_3_ATE：
+列名	类型	描述
+TBL_YEAR	NVARCHAR	年份
+RESULT1_ID	DECIMAL	R1测试结果行ID
+ATE_ID	DECIMAL	测试装备ID
+JOB_NUM	NVARCHAR	任务令
+TEST_DATE	TIMESTAMP	测试日期
+START_DATETIME	TIMESTAMP	R1测试开始时间
+STOP_DATETIME	TIMESTAMP	R1测试结束时间
+RESULT	DECIMAL	R1测试结果
+OPR_ID	NVARCHAR	操作员ID
+TPS_ID	DECIMAL	TPS ID
+SERIAL_NUMBER	NVARCHAR	R1条码(产品)
+IS_BOARD_FLAG	NVARCHAR	单板标志位
+OPERATION_SEQUENCE	NVARCHAR	工序
+OPERTAION_SEQUENCE_SUB	NVARCHAR	工位
+TEST_NUM	DECIMAL	测试次数
+TPS_VER	NVARCHAR	TPS版本
+ATE_VER	NVARCHAR	测试装备版本
+BOARD_FLAG	NVARCHAR	TPS上报数据预留字段
+BOARD_CODE	NVARCHAR	单板编码(整机)
+TRANSACTION_TIME	TIMESTAMP	数据入库时间
+RESULT2_ID	DECIMAL	R2测试结果行ID
+R2_START_DATETIME	TIMESTAMP	R2测试开始时间
+R2_STOP_DATETIME	TIMESTAMP	R2测试结束时间
+FT_TEST_ITEM_ID	DECIMAL	R2测试项ID
+R2_FT_TEST_ITEM_NAME	NVARCHAR	R2测试项名称
+R2_RESULT	DECIMAL	R2测试结果
+RESULT_DESC	NVARCHAR	R2测试结果描述
+R2_SERIAL_NUMBER	NVARCHAR	R2条码(产品)
+IS_VALUE_FLAG	NVARCHAR	值标志位
+UPPER_LIMIT	DECIMAL	上限
+LOWER_LIMIT	DECIMAL	下限
+R2_IS_BOARD_FLAG	NVARCHAR	R2单板标志位
+RESULT3_ID	DECIMAL	R3测试结果行ID
+R3_FT_TEST_ITEM_ID	DECIMAL	R3测试项ID
+FT_TEST_ITEM_NAME	NVARCHAR	R3测试项名称
+R3_RESULT	DECIMAL	R3测试结果
+R3_RESULT_DESC	NVARCHAR	R3测试结果描述
+R3_UPPER_LIMIT	DECIMAL	R3上限
+R3_LOWER_LIMIT	DECIMAL	R3下限
+R3_SERIAL_NUMBER	NVARCHAR	R3条码(产品)
+R3_IS_BOARD_FLAG	NVARCHAR	R3单板标志位
+TPS_NAME	NVARCHAR	TPS名称
+ATE_NAME	NVARCHAR	测试装备名称 
+COMPUTER_NAME	NVARCHAR	计算机名
+CM_NAME	NVARCHAR	EMS代码
+LAST_TEST_FLAG	DECIMAL	最后一次测试标识
+STATION_NAME	NVARCHAR	工序简称:终端持有
+SEGMENT3	NVARCHAR	预留字段3
+
+TESTTESTDATA：
+列名	类型	描述
+FACTORY	NVARCHAR	工厂
+RAW_MAT_ID	NVARCHAR	物料类型ID
+LOT_ID	NVARCHAR	物料ID
+DATE_CODE	NVARCHAR	大批次ID
+LOTE_CODE	NVARCHAR	小批次ID
+VENDOR_ID	NVARCHAR	供应商ID
+LINE_ID	NVARCHAR	产线ID
+REPAIR_FLAG	NVARCHAR	维修标识
+REPAIR_CODE	NVARCHAR	维修代码
+REPAIR_DESC	NVARCHAR	维修描述
+PROD_MODEL	NVARCHAR	产品型号
+
+TESTTESTDATA5:
+列名	类型	描述
+SERIAL_NUMBER	NVARCHAR	产品条码
+VENDOR_NAME	NVARCHAR	供应商
+TEST_DATE	TIMESTAMP	测试日期
+
+RMODEL_VARIABLES：
+列名	类型	描述
+VARIABLE_NAME	NVARCHAR	参数名
+VARIABLE_VALUE	NVARCHAR	参数值
+
+RMODEL_TEMP：
+列名	类型	描述
+RESULT_TYPE	VARCHAR	测试结果(T or F)
+SERIAL_NUMBER	VARCHAR	产品条码
+MATERIAL_ID	VARCHAR	物料类型ID
+R2_TEST_ITEM_NAME	VARCHAR	R2测试项名称
+
