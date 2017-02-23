@@ -1,0 +1,326 @@
+	
+配置手册
+
+Document Version: 1.0 – Final 
+Date: November 21, 2016
+CUSTOMER
+
+SAP HANA与R安装集成配置手册
+华为技术有限公司
+
+
+*****IMPORTANT NOTE:
+ALL MANUAL FORMATTING HAS BEEN DEACTIVATED IN THESE CORPORATE TEMPLATES!
+WORK WITH STYLES SO THAT YOUR DOCUMENT IS FORMATTED CONSISTENTLY AND ALL BOOKMARKS; ETC: ARE UPDATED CORRECTLY. FOR MORE INFORMATION AND TROUBLESHOOTING TIPS, SEE THE CD LIBRARY WIKI @ https://wiki.wdf.sap.corp/wiki/x/ovcFXg.
+
+*****To display the explanatory text in this template, choose the paragraph symbol ¶ on the Home tab.
+
+
+ 
+Typographic Conventions
+Type Style	Description
+Example	Words or characters quoted from the screen. These include field names, screen titles, pushbuttons labels, menu names, menu paths, and menu options.
+Textual cross-references to other documents.
+Example	Emphasized words or expressions.
+EXAMPLE	Technical names of system objects. These include report names, program names, transaction codes, table names, and key concepts of a programming language when they are surrounded by body text, for example, SELECT and INCLUDE.
+Example	Output on the screen. This includes file and directory names and their paths, messages, names of variables and parameters, source text, and names of installation, upgrade and database tools.
+Example	Exact user entry. These are words or characters that you enter in the system exactly as they appear in the documentation.
+<Example>	Variable user entry. Angle brackets indicate that you replace these words and characters with appropriate entries to make entries in the system.
+EXAMPLE	Keys on the keyboard, for example, F2 or ENTER.
+
+Document History 文档历史
+
+
+Version	Status	Date	Change
+1.0	Initial	<2016-11-21>	
+Document initialization
+Table of Contents 文档目录
+1	About This Document 关于文档	5
+1.1	Purpose and Scope 目标和范围	5
+1.2	Target Audience 目标用户	5
+1.3	Glossary 术语表	6
+1.4	Related Information 关联信息	6
+2	Solution Overview 解决方案概览	7
+2.1	System Landscape 系统蓝图	7
+2.2	Software Component Matrix　软件矩阵	7
+2.3	SAP HANA与R(离线)安装集成配置假设	8
+3	SAP HANA和R(离线)安装集成配置步骤	9
+3.1	R语言运行环境安装	9
+3.1.1	检查所需SUSE Linux软件包是否存在	9
+3.1.2	安装gcc-fortran rpm包	9
+3.1.3	安装 readline-devel rpm包	9
+3.1.4	安装 R语言环境	10
+3.1.5	安装R Server包	10
+3.1.6	配置HANA与R Server集成	11
+3.1.7	安装R stan包	11
+4	安装过程问题解决方案	14
+4.1	R stan安装过程问题解决方案	14
+4.1.1	Stringi包安装问题解决方案	14
+4.1.2	PKI包安装问题解决方案	15
+
+
+
+ 
+1	About This Document 关于文档
+
+  Caution
+<Put your caution here>
+
+  Example
+<Put your example here>
+
+  Note
+<Put your note here>
+
+  Recommendation
+<Put your recommendation here>
+
+  Syntax
+<Put your syntax here>
+1.1	Purpose and Scope 目标和范围
+本文档用于R环境在linux系统中的离线安装以及与HANA系统的集成配置
+1.2	Target Audience 目标用户
+This document is intended for the following target audiences:
+此文档适用于以下目标用户:
+R安装人员
+HANA Basis
+1.3	Glossary 术语表
+
+Term	Abbreviation	Definition
+		
+		
+		
+1.4	Related Information 关联信息
+2	Solution Overview 解决方案概览
+2.1	System Landscape 系统蓝图
+ 
+                                                                     图1- SAP HANA和R集成架构
+为了在HANA中执行R代码，R代码以R语言的形式在HANA存储过程中实现，在外部的Rserve中执行。SAP HANA的calculation engine为支持R操作符做了扩展，针对输入对象，进行计算后，输出结果表。与HANA本地操作符不同的是，R操作符可以被R函数处理，当calculation engine识别到R操作符后，R Client会给Rserve发送请求，同时发送R函数需要的参数，Rserve执行R函数，最后将结果数据框发送回calculation engine。
+
+2.2	Software Component Matrix　软件矩阵
+
+SAP HANA和R集成相关软件	软件版本	描述
+SUSE Linux Enterprise 11	SP3	操作系统
+SAP HANA Server 1.0	SP10 Patch level 2	SAP HANA平台
+R	3.1.0	R语言运行环境
+R Serve	1.7.3	R TCP/IP应用服务
+Rstan	2.12.1	R为stan(贝叶斯模型的C++库)提供的接口
+gcc-fortran	4.3-34.243	安装R语言运行环境必须的Linux包
+readline-devel	6.0-18.3	独立运行R语言运行环境必须的Linux包
+...	...	...
+
+
+2.3	SAP HANA与R(离线)安装集成配置假设
+此配置文档中包含的安装包版本严格依赖软件矩阵中所列相关软件的软件版本号，如实际安装时SAP HANA和R集成相关软件的软件版本有差异，须匹配相应的安装包版本进行安装。
+此配置文档中涉及的安装配置步骤所用到的软件和安装包均已下载到安装所在服务器，无须额外下载
+3	SAP HANA和R(离线)安装集成配置步骤　
+3.1	R语言运行环境安装
+3.1.1	检查所需SUSE Linux软件包是否存在
+在shell中运行rpm -qa|grep gcc-fortran，检查输出结果是否为以下截图，如不匹配执行步骤３.１.２
+
+在shell中运行rpm -qa|grep readline-devel, 检查输出结果是否为以下截图，如不匹配执行步骤３.１.３
+3.1.2	安装gcc-fortran rpm包
+１.安装依赖包gcc43-fortran
+在shell中运行命令cd <gcc43-fortran所在路径>
+在shell中运行命令rpm -ivh --nodeps gcc43-fortran-4.3.4_20091019-3.1.x86_64.rpm
+
+２.安装gcc-fortran
+在shell中运行命令cd <gcc-fortran所在路径>
+在shell中运行命令rpm -ivh gcc-fortran-4.3-34.243.x86_64.rpm
+
+3.1.3	安装 readline-devel rpm包
+１.安装依赖包libreadline6
+在shell中运行命令cd < libreadline6所在路径>
+在shell中运行命令rpm -ivh libreadline6-6.0-18.3.x86_64.rpm
+
+２.安装readline-devel
+在shell中运行命令cd < readline-devel所在路径>
+在shell中运行命令rpm -ivh readline-devel-6.0-18.3.x86_64.rpm
+
+3.1.4	安装 R语言环境
+１.　解压R安装包到安装临时目录
+在shell中运行命令cd <R安装临时目录>
+在shell中运行命令tar -xvf R-3.1.0.tar.gz
+
+２.　执行R安装
+在shell中运行命令cd <R安装临时目录>/R-3.1.0
+在shell中运行命令./configure --enable-R-shlib -with-x=no
+在shell中运行命令make clean
+在shell中运行命令make
+在shell中运行命令make install
+3.1.5	安装R Server包
+１. 　安装R Server包 Rserve_1.7-3.tar.gz
+在shell中运行命令R
+在R控制台中运行 install.packages("<R Server包所在路径>/Rserve_1.7-3.tar.gz", repos = NULL)
+ 2. 　测试R Server包是否安装成功
+在shell中运行命令R
+在R控制台中运行library("Rserve")
+如果没有任何输出返回，则安装成功
+ 3. 　对R Server进行初始化配置
+在shell中运行命令 vi /etc/Rserv.conf
+创建Rserv.conf文件，并在文件中输入以下内容:
+maxinbuf 134217728
+maxsendbuf 0
+remote enable
+workdir <Rserver存储目录> 
+
+备注
+（此处为Rser 分配 1/4的服务器物理内存）：
+Maxinbuf = <服务器物理内存> / (1024*4)
+假设服务器物理内存=512G
+Maxinbuf = 512*1024*1024*1024 / 4096
+
+(此处分配大容量磁盘给Rserver)
+workdir = /hana/data/HT1/tmp/Rserve
+
+4. 　启动R Server
+在shell中运行命令R CMD Rserve --RS-port <接口号> --no-save --RS-encoding utf8
+<接口号>是外部应用连接R Server用的接口，默认接口可以设为6311
+
+4. 　检查R Server是否启动成功
+在shell中运行命令ps aux|grep Rserve
+成功则出现以下信息
+
+
+3.1.6	配置HANA与R Server集成
+1. 对HANA进行R Server集成配置
+在HANA studio中，在System视图中右键要配置的HANA系统，在弹出菜单中选择Administration
+在Administration视图中，选择Configuration标签
+在Configuration配置页面下，在以下路径下创建参数
+Indexserver.ini -> xsengine.ini -> calcEngine
+参数列表
+参数名	参数值
+cer_rserve_addresses	<R Server所在服务器IP地址>:<R Server配置的端口>
+cer_timeout	300
+cer_rserve_maxsendsize	0
+
+2. 为操作用户添加权限
+为所要使用的操作用户添加以下权限
+system privillege : CREATE R SCRIPT
+
+3.1.7	安装R stan包
+1. 创建R stan安装过程中的依赖文件
+在shell中运行命令vi_<R安装目录>/doc/NEWS.pdf
+保存并退出
+
+2. 安装R stan包
+方法一(脚本安装):
+在shell中运行R
+在R 控制台中运行以下命令
+> library(tools)
+> write_PACKAGES("<rstan包及依赖包所在目录>")
+> install.packages("rstan",contriburl="file:///<rstan包及依赖包所在目录>/")
+
+方法二(手动安装):
+在shell中运行R
+严格按照以下顺序安装R stan及其依赖包，在R控制台中运行以下命令
+install.packages("<rstan包及依赖包所在目录>/BH_1.60.0-2.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/digest_0.6.10.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/Rcpp_0.12.7.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/htmltools_0.3.5.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/jsonlite_1.1.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/yaml_2.1.13.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/htmlwidgets_0.7.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/magrittr_1.5.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/DT_0.2.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/base64enc_0.1-3.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/R6_2.2.0.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/RColorBrewer_1.1-2.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/bitops_1.0-6.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/RJSONIO_1.3-0.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/RUnit_0.4.31.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/RcppEigen_0.3.2.9.0.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/StanHeaders_2.12.0.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/colorspace_1.2-7.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/httpuv_1.3.3.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/mime_0.5.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/xtable_1.8-2.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/sourcetools_0.1.5.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/shiny_0.14.2.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/miniUI_0.1.1.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/shinyjs_0.7.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/colourpicker_0.2.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/dichromat_2.0-0.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/zoo_1.7-13.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/xts_0.9-7.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/dygraphs_1.1.1.2.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/stringi_1.1.2.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/stringr_1.1.0.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/evaluate_0.10.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/formatR_1.4.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/gtable_0.2.0.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/plyr_1.8.4.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/reshape2_1.4.2.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/munsell_0.4.3.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/labeling_0.3.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/scales_0.4.0.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/ggplot2_2.1.0.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/gridExtra_2.2.1.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/gtools_3.5.0.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/highr_0.6.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/inline_0.3.14.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/kernlab_0.9-25.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/markdown_0.7.7.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/knitr_1.14.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/packrat_0.4.8-1.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/rstudioapi_0.6.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/shinythemes_1.1.1.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/threejs_0.2.2.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/PKI_0.1-3.tar.gz",repos=NULL)
+install.packages("<rstan包及依赖包所在目录>/rstan_2.12.1.tar.gz",repos=NULL)
+
+3. 验证R stan包安装结果:
+在shell中运行R
+在R控制台中运行 library(rstan)
+成功则出现如下版本信息
+
+4	安装过程问题解决方案
+4.1	R stan安装过程问题解决方案
+4.1.1	Stringi包安装问题解决方案
+问题描述：
+在安装Stringi包过程中，如遇到以下问题:
+Error in download.file(paste(href, fname,sep=""), outfname, mode="wb"):cannot open URL 'http://static.rexamine.com/packages/icudt55l.zip'
+Error in download.file(paste(href, fname,sep=""), outfname, mode="wb"):cannot open URL 'http://www.mini.pw.edu.pl/~gagolews/stringi/icudt55l.zip'
+Error in download.file(paste(href, fname,sep=""), outfname, mode="wb"):cannot open URL 'http://www.ibspan.waw.pl/~gagolews/stringi/icudt55l.zip'
+icudt download failed
+Error in eval(expr, envir, enclos):
+	icudt could not be download. check your internet connectivity
+
+解决方案:
+在shell中运行命令 cd <stringi_1.1.2.tar.gz所在目录>
+在shell中运行命令 gunzip stringi_1.1.2.tar.gz
+在shell中运行命令 tar -xvf stringi_1.1.2.tar
+在shell中运行命令 cd stringi/R
+在shell中运行命令 vi install.R
+在vi中修改以下文件内容
+删除下面这行代码:
+mirros <- C("http://static.rexamine.com/packages/",
+在删除位置添加下面这行代码:
+mirros <- C("<rstan包及依赖包所在目录>",
+保存并退出
+继续安装stringi包
+
+4.1.2	PKI包安装问题解决方案
+问题描述：
+在安装PKI包过程中，如遇到以下问题:
+In file included from init.c:1:
+pki.h:11:25: error: openssl/err.h: No such file or directory
+pki.h:12:25: error: openssl/evp.h: No such file or directory
+pki.h:13:25: error: openssl/rsa.h: No such file or directory
+pki.h:14:25: error: openssl/sha.h: No such file or directory
+pki.h:15:25: error: openssl/md5.h: No such file or directory
+pki.h:16:25: error: openssl/x509.h: No such file or directory
+pki.h:17:25: error: openssl/ssl.h: No such file or directory
+init.c: In function 'PKI_init':
+
+解决方案:
+在shell中运行命令 rpm -ivh zlib-devel-1.2.7-2.1.2.x86_64.rpm
+在shell中运行命令 rpm -ivh libopenssl-devel-0.9.8j-2.1.x86_64.rpm
+继续安装PKI包
+
+
+ 
+
+www.sap.com/contactsap
+© 2014 SAP SE or an SAP affiliate company. All rights reserved.
+
